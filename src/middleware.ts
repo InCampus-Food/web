@@ -5,6 +5,8 @@ const protectedRoutes: Record<string, string[]> = {
   "/admin": ["admin"],
   "/canteen": ["canteen"],
   "/order": ["customer"],
+  "/profile": ["admin", "canteen", "customer"],
+  "/checkout": ["customer"],
   "/track": ["customer"],
 };
 
@@ -29,8 +31,9 @@ export function middleware(request: NextRequest) {
   const token = request.cookies.get("access_token")?.value;
 
   const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup");
+  const isPublicPage = pathname === "/" || pathname === "/about" || pathname === "/contact";
 
-  if (!token && !isAuthPage) {
+  if (!token && !isAuthPage && !isPublicPage) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 

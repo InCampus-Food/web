@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Outfit, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
+import TopNavbar from "@/components/common/TopNavbar";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const outfit = Outfit({
+  variable: "--font-outfit",
   subsets: ["latin"],
 });
 
@@ -21,8 +22,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        {children}
+      <body className={`${outfit.variable} ${geistMono.variable} antialiased min-h-screen bg-muted/20 flex flex-col text-foreground font-sans`}>
+        <TopNavbar />
+        <div className="w-full flex-1 flex flex-col relative">
+          {children}
+        </div>
         <Toaster richColors position="top-right" />
       </body>
     </html>
