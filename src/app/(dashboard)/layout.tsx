@@ -1,9 +1,9 @@
 "use client";
 
+import TopNavbar from "@/components/common/TopNavbar";
 import { useAuthStore } from "@/stores/authStore";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import Sidebar from "@/components/common/Sidebar";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuthStore();
@@ -14,9 +14,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [isAuthenticated]);
 
   return (
-    <div className="flex min-h-screen">
-      <Sidebar />
-      <main className="flex-1 p-6 bg-muted/20">{children}</main>
-    </div>
+    <main className="flex-1 w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
+      {children}
+    </main>
   );
 }

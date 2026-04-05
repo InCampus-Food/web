@@ -1,146 +1,251 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+import { canteenApi } from "@/lib/api/canteen";
+import { menuApi } from "@/lib/api/menu";
+import { useCategories } from "@/hooks/useCategories";
+import { Canteen } from "@/types/canteen";
+import { MenuItem } from "@/types/menu";
+import { useCartStore } from "@/stores/cartStore";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ShoppingCart, Search, Plus, MapPin } from "lucide-react";
-
-const canteens = [
-  { id: 1, name: "Kantin A", description: "Masakan Indonesia & Minuman", isOpen: true },
-  { id: 2, name: "Kantin B", description: "Mie & Bakso Spesial", isOpen: true },
-  { id: 3, name: "Kantin C", description: "Makanan Sehat & Jus", isOpen: false },
-];
-
-const menuItems = [
-  { id: 1, canteenId: 1, name: "Nasi Goreng Spesial", price: 15000, category: "Makanan" },
-  { id: 2, canteenId: 1, name: "Ayam Bakar", price: 18000, category: "Makanan" },
-  { id: 3, canteenId: 1, name: "Es Teh Manis", price: 5000, category: "Minuman" },
-  { id: 4, canteenId: 2, name: "Mie Ayam Bakso", price: 14000, category: "Makanan" },
-  { id: 5, canteenId: 2, name: "Bakso Urat", price: 16000, category: "Makanan" },
-];
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter } from "@/components/ui/sheet";
+import { Search, ShoppingCart, Plus, Minus, Trash2, MapPin, UtensilsCrossed } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 export default function OrderPage() {
-  const [selectedCanteen, setSelectedCanteen] = useState<number | null>(null);
-  const [cart, setCart] = useState<Record<number, number>>({});
+  const router = useRouter();
+  const [canteens, setCanteens] = useState<Canteen[]>([]);
+  const [selectedCanteen, setSelectedCanteen] = useState<Canteen | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [search, setSearch] = useState("");
+  const [isLoadingCanteens, setIsLoadingCanteens] = useState(true);
+  const [isLoadingMenu, setIsLoadingMenu] = useState(false);
+  const [isCartOpen, setIsCartOpen] = useState(false);
 
-  const filteredMenu = menuItems.filter(
-    (item) => item.canteenId === selectedCanteen &&
-      item.name.toLowerCase().includes(search.toLowerCase())
+  const { categories } = useCategories();
+  const { canteenId, canteenName, items, addItem, removeItem, updateQty, clearCart, totalItems, totalPrice } = useCartStore();
+
+  useEffect(() => {
+    canteenApi.list()
+      .then(setCanteens)
+      .catch(() => toast.error("Gagal memuat kantin"))
+      .finally(() => setIsLoadingCanteens(false));
+  }, []);
+
+  const selectCanteen = async (canteen: Canteen) => {
+    if (canteenId && canteenId !== canteen.id && items.length > 0) {
+      const confirm = window.confirm(`Ganti kantin akan mengosongkan keranjang dari ${canteenName}. Lanjutkan?`);
+      if (!confirm) return;
+    }
+    setSelectedCanteen(canteen);
+    setIsLoadingMenu(true);
+    try {
+      const menu = await menuApi.list(canteen.id);
+      setMenuItems(menu);
+    } catch {
+      toast.error("Gagal memuat menu");
+    } finally {
+      setIsLoadingMenu(false);
+    }
+  };
+
+  const getCategoryLabel = (category_id?: number) => {
+    if (!category_id) return "Lainnya";
+    const cat = categories.find((c) => c.id === category_id);
+    return cat ? `${cat.icon ?? ""} ${cat.name}`.trim() : "Lainnya";
+  };
+
+  const filteredMenu = menuItems.filter((item) =>
+    item.name.toLowerCase().includes(search.toLowerCase())
   );
 
-  const totalItems = Object.values(cart).reduce((a, b) => a + b, 0);
-  const totalPrice = Object.entries(cart).reduce((total, [id, qty]) => {
-    const item = menuItems.find((m) => m.id === Number(id));
-    return total + (item?.price ?? 0) * qty;
-  }, 0);
+  const groupedMenu = filteredMenu.reduce<Record<string, MenuItem[]>>((acc, item) => {
+    const key = getCategoryLabel(item.category_id);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
 
-  const addToCart = (id: number) => setCart((prev) => ({ ...prev, [id]: (prev[id] ?? 0) + 1 }));
-  const removeFromCart = (id: number) => setCart((prev) => {
-    if ((prev[id] ?? 0) <= 1) { const next = { ...prev }; delete next[id]; return next; }
-    return { ...prev, [id]: prev[id] - 1 };
-  });
+  const getQty = (id: number) => items.find((i) => i.menu_item_id === id)?.quantity ?? 0;
+
+  const handleAdd = (item: MenuItem) => {
+    if (!selectedCanteen) return;
+    addItem(selectedCanteen.id, selectedCanteen.name, {
+      menu_item_id: item.id,
+      name: item.name,
+      price: item.price,
+      quantity: 1,
+    });
+  };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Pesan Makanan</h1>
-        <p className="text-muted-foreground">Pilih kantin dan menu favoritmu.</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Pesan Makanan</h1>
+          <p className="text-muted-foreground">
+            {selectedCanteen ? `Menu dari ${selectedCanteen.name}` : "Pilih kantin"}
+          </p>
+        </div>
+        {totalItems() > 0 && (
+          <Button onClick={() => setIsCartOpen(true)} className="relative">
+            <ShoppingCart className="h-4 w-4 mr-2" />
+            Keranjang
+            <Badge className="ml-2 bg-white rounded-full text-primary">{totalItems()}</Badge>
+          </Button>
+        )}
       </div>
 
-      {/* Canteen Selection */}
+      {/* Canteen List */}
       {!selectedCanteen && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {canteens.map((canteen) => (
-            <Card
-              key={canteen.id}
-              className={`cursor-pointer transition-all hover:shadow-md ${!canteen.isOpen ? "opacity-50 cursor-not-allowed" : ""}`}
-              onClick={() => canteen.isOpen && setSelectedCanteen(canteen.id)}
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">{canteen.name}</CardTitle>
-                  <Badge variant={canteen.isOpen ? "default" : "secondary"}>
-                    {canteen.isOpen ? "Buka" : "Tutup"}
-                  </Badge>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{canteen.description}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        isLoadingCanteens ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-32" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {canteens.map((canteen) => (
+              <Card
+                key={canteen.id}
+                className={`cursor-pointer transition-all hover:shadow-md ${!canteen.is_open ? "opacity-50 cursor-not-allowed" : "hover:border-primary"}`}
+                onClick={() => canteen.is_open && selectCanteen(canteen)}
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-lg">{canteen.name}</CardTitle>
+                    <Badge variant={canteen.is_open ? "default" : "secondary"}>
+                      {canteen.is_open ? "Buka" : "Tutup"}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">{canteen.description ?? "Tidak ada deskripsi"}</p>
+                  {canteen.location && (
+                    <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
+                      <MapPin className="h-3 w-3" /> {canteen.location}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )
       )}
 
       {/* Menu */}
       {selectedCanteen && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm" onClick={() => { setSelectedCanteen(null); setCart({}); }}>
+            <Button variant="outline" size="sm" onClick={() => { setSelectedCanteen(null); setMenuItems([]); }}>
               ← Kembali
             </Button>
-            <span className="font-medium">{canteens.find(c => c.id === selectedCanteen)?.name}</span>
-          </div>
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Cari menu..."
-              className="pl-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {filteredMenu.map((item) => (
-              <Card key={item.id}>
-                <CardContent className="flex items-center justify-between p-4">
-                  <div>
-                    <p className="font-medium">{item.name}</p>
-                    <p className="text-sm text-muted-foreground">{item.category}</p>
-                    <p className="text-sm font-semibold mt-1">Rp {item.price.toLocaleString("id-ID")}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {cart[item.id] ? (
-                      <>
-                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => removeFromCart(item.id)}>-</Button>
-                        <span className="w-4 text-center text-sm font-medium">{cart[item.id]}</span>
-                        <Button size="icon" className="h-7 w-7" onClick={() => addToCart(item.id)}>+</Button>
-                      </>
-                    ) : (
-                      <Button size="sm" onClick={() => addToCart(item.id)}>
-                        <Plus className="h-4 w-4 mr-1" /> Tambah
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          {/* Cart Summary */}
-          {totalItems > 0 && (
-            <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-              <Card className="shadow-lg border-primary">
-                <CardContent className="flex items-center gap-6 p-4">
-                  <div className="flex items-center gap-2">
-                    <ShoppingCart className="h-5 w-5" />
-                    <span className="font-medium">{totalItems} item</span>
-                  </div>
-                  <span className="font-bold">Rp {totalPrice.toLocaleString("id-ID")}</span>
-                  <Button size="sm">
-                    <MapPin className="h-4 w-4 mr-1" /> Pilih Titik Antar
-                  </Button>
-                </CardContent>
-              </Card>
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Cari menu..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
+          </div>
+
+          {isLoadingMenu ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-24" />)}
+            </div>
+          ) : Object.keys(groupedMenu).length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+              <UtensilsCrossed className="h-10 w-10 mb-2" />
+              <p>Tidak ada menu tersedia</p>
+            </div>
+          ) : (
+            Object.entries(groupedMenu).map(([category, categoryItems]) => (
+              <div key={category} className="space-y-2">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wide">{category}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {categoryItems.map((item) => {
+                    const qty = getQty(item.id);
+                    return (
+                      <Card key={item.id}>
+                        <CardContent className="flex items-center justify-between p-4 gap-3">
+                          <div className="flex-1">
+                            <p className="font-medium">{item.name}</p>
+                            {item.description && <p className="text-xs text-muted-foreground line-clamp-1">{item.description}</p>}
+                            <p className="text-sm font-bold mt-1">Rp {item.price.toLocaleString("id-ID")}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {qty > 0 ? (
+                              <>
+                                <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => updateQty(item.id, qty - 1)}>
+                                  <Minus className="h-3 w-3" />
+                                </Button>
+                                <span className="w-4 text-center font-medium">{qty}</span>
+                                <Button size="icon" className="h-8 w-8" onClick={() => handleAdd(item)}>
+                                  <Plus className="h-3 w-3" />
+                                </Button>
+                              </>
+                            ) : (
+                              <Button size="sm" onClick={() => handleAdd(item)}>
+                                <Plus className="h-4 w-4 mr-1" /> Tambah
+                              </Button>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
           )}
         </div>
       )}
+
+      {/* Cart Sheet */}
+      <Sheet open={isCartOpen} onOpenChange={setIsCartOpen}>
+        <SheetContent>
+          <SheetHeader>
+            <SheetTitle>Keranjang — {canteenName}</SheetTitle>
+          </SheetHeader>
+          <div className="flex flex-col h-full px-5">
+            <div className="flex-1 overflow-y-auto py-4 space-y-3">
+              {items.map((item) => (
+                <div key={item.menu_item_id} className="flex items-center gap-3 p-3 rounded-lg border">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">{item.name}</p>
+                    <p className="text-xs text-muted-foreground">Rp {item.price.toLocaleString("id-ID")}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(item.menu_item_id, item.quantity - 1)}>
+                      <Minus className="h-3 w-3" />
+                    </Button>
+                    <span className="w-4 text-center text-sm">{item.quantity}</span>
+                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(item.menu_item_id, item.quantity + 1)}>
+                      <Plus className="h-3 w-3" />
+                    </Button>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeItem(item.menu_item_id)}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <SheetFooter className="flex-col gap-3 border-t pt-4">
+              <div className="flex justify-between font-bold text-lg">
+                <span>Total</span>
+                <span>Rp {totalPrice().toLocaleString("id-ID")}</span>
+              </div>
+              <Button className="w-full" onClick={() => { setIsCartOpen(false); router.push("/checkout"); }}>
+                <ShoppingCart className="h-4 w-4 mr-2" /> Masuk ke pembayaran
+              </Button>
+              <Button variant="ghost" className="w-full text-destructive" onClick={() => { clearCart(); setIsCartOpen(false); }}>
+                Kosongkan Keranjang
+              </Button>
+            </SheetFooter>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

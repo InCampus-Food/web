@@ -11,14 +11,8 @@ import { authApi } from "@/lib/api/auth";
 import { toast } from "sonner";
 import { useState } from "react";
 import {
-  LayoutDashboard,
-  UtensilsCrossed,
-  ShoppingCart,
-  Truck,
-  Users,
-  LogOut,
-  ChefHat,
-  Loader2,
+  LayoutDashboard, UtensilsCrossed, ShoppingCart,
+  Truck, Users, LogOut, ChefHat, Loader2, Tag, UserCircle,
 } from "lucide-react";
 
 const navByRole = {
@@ -26,7 +20,7 @@ const navByRole = {
     { label: "Dashboard", href: "/admin", icon: LayoutDashboard },
     { label: "Kantin", href: "/admin/canteens", icon: UtensilsCrossed },
     { label: "Pengguna", href: "/admin/users", icon: Users },
-    { label: "Pesanan", href: "/admin/orders", icon: ShoppingCart },
+    { label: "Kategori", href: "/admin/categories", icon: Tag },
   ],
   canteen: [
     { label: "Dashboard", href: "/canteen", icon: LayoutDashboard },
@@ -56,12 +50,9 @@ export default function Sidebar() {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      if (refreshToken) {
-        await authApi.logout(refreshToken);
-      }
-    } catch {
-      // Tetap logout meski API gagal
-    } finally {
+      if (refreshToken) await authApi.logout(refreshToken);
+    } catch {}
+    finally {
       clearAuth();
       toast.success("Berhasil keluar!");
       router.push("/login");
@@ -101,18 +92,25 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div className="p-4 border-t">
+      <div className="p-4 border-t space-y-1">
+        <Link href="/profile">
+          <div className={cn(
+            "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
+            pathname === "/profile"
+              ? "bg-primary text-primary-foreground"
+              : "hover:bg-muted text-muted-foreground hover:text-foreground"
+          )}>
+            <UserCircle className="h-4 w-4" />
+            Profil Saya
+          </div>
+        </Link>
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 text-muted-foreground"
           onClick={handleLogout}
           disabled={isLoggingOut}
         >
-          {isLoggingOut ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <LogOut className="h-4 w-4" />
-          )}
+          {isLoggingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
           {isLoggingOut ? "Keluar..." : "Keluar"}
         </Button>
       </div>

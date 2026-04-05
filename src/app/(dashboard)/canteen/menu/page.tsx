@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMyCanteen } from "@/hooks/useMyCanteen";
+import { useCategories } from "@/hooks/useCategories";
 import { menuApi } from "@/lib/api/menu";
 import { MenuItem } from "@/types/menu";
 import { toast } from "sonner";
@@ -17,19 +18,18 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Pencil, Trash2, Search, UtensilsCrossed } from "lucide-react";
 
-const CATEGORIES = ["Makanan", "Minuman", "Snack", "Dessert", "Lainnya"];
-
 const emptyForm = {
   name: "",
   description: "",
   price: "",
   image_url: "",
-  category: "Makanan",
+  category_id: "",
   is_available: true,
 };
 
 export default function MenuPage() {
   const { canteen, isLoading: canteenLoading } = useMyCanteen();
+  const { categories, isLoading: categoriesLoading } = useCategories();
   const [items, setItems] = useState<MenuItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [search, setSearch] = useState("");
@@ -51,13 +51,13 @@ export default function MenuPage() {
 
   const filtered = items.filter((item) => {
     const matchSearch = item.name.toLowerCase().includes(search.toLowerCase());
-    const matchCategory = categoryFilter === "all" || item.category === categoryFilter;
+    const matchCategory = categoryFilter === "all" || String(item.category_id) === categoryFilter;
     return matchSearch && matchCategory;
   });
 
   const openCreate = () => {
     setSelectedItem(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, category_id: categories[0] ? String(categories[0].id) : "" });
     setIsDialogOpen(true);
   };
 
@@ -68,7 +68,7 @@ export default function MenuPage() {
       description: item.description ?? "",
       price: String(item.price),
       image_url: item.image_url ?? "",
-      category: item.category ?? "Makanan",
+      category_id: item.category_id ? String(item.category_id) : "",
       is_available: item.is_available,
     });
     setIsDialogOpen(true);
@@ -92,7 +92,7 @@ export default function MenuPage() {
       description: form.description || undefined,
       price: Number(form.price),
       image_url: form.image_url || undefined,
-      category: form.category,
+      category_id: form.category_id ? Number(form.category_id) : undefined,
       is_available: form.is_available,
     };
 
@@ -137,6 +137,11 @@ export default function MenuPage() {
     }
   };
 
+  const getCategoryName = (category_id?: number) => {
+    if (!category_id) return null;
+    return categories.find((c) => c.id === category_id);
+  };
+
   if (canteenLoading) {
     return (
       <div className="space-y-4">
@@ -177,12 +182,16 @@ export default function MenuPage() {
           <Input placeholder="Cari menu..." className="pl-9" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Kategori</SelectItem>
-            {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+            {categories.map((c) => (
+              <SelectItem key={c.id} value={String(c.id)}>
+                {c.icon} {c.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -199,41 +208,45 @@ export default function MenuPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((item) => (
-            <Card key={item.id} className={!item.is_available ? "opacity-60" : ""}>
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex-1">
-                    <p className="font-semibold">{item.name}</p>
-                    {item.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>}
+          {filtered.map((item) => {
+            const cat = getCategoryName(item.category_id);
+            return (
+              <Card key={item.id} className={!item.is_available ? "opacity-60" : ""}>
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <p className="font-semibold">{item.name}</p>
+                      {item.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>}
+                    </div>
+                    {cat && (
+                      <Badge variant="outline" className="text-xs shrink-0">
+                        {cat.icon} {cat.name}
+                      </Badge>
+                    )}
                   </div>
-                  <Badge variant="outline" className="text-xs shrink-0">{item.category}</Badge>
-                </div>
 
-                <p className="text-lg font-bold">Rp {item.price.toLocaleString("id-ID")}</p>
+                  <p className="text-lg font-bold">Rp {item.price.toLocaleString("id-ID")}</p>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Switch
-                      checked={item.is_available}
-                      onCheckedChange={() => handleToggleAvailable(item)}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {item.is_available ? "Tersedia" : "Habis"}
-                    </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Switch checked={item.is_available} onCheckedChange={() => handleToggleAvailable(item)} />
+                      <span className="text-xs text-muted-foreground">
+                        {item.is_available ? "Tersedia" : "Habis"}
+                      </span>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(item)}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => openDelete(item)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(item)}>
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => openDelete(item)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -259,10 +272,18 @@ export default function MenuPage() {
               </div>
               <div className="space-y-2">
                 <Label>Kategori</Label>
-                <Select value={form.category} onValueChange={(val) => setForm({ ...form, category: val })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Select
+                  value={form.category_id}
+                  onValueChange={(val) => setForm({ ...form, category_id: val })}
+                  disabled={categoriesLoading}
+                >
+                  <SelectTrigger><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
                   <SelectContent>
-                    {CATEGORIES.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.icon} {c.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>

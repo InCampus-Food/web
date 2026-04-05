@@ -12,10 +12,9 @@ export const canteenApi = {
     return data;
   },
 
-  getMyCanteen: async (): Promise<Canteen | null> => {
-    const { data } = await apiClient.get("/canteens");
-    const userId = JSON.parse(localStorage.getItem("auth-storage") ?? "{}")?.state?.user?.id;
-    return data.find((c: Canteen) => c.user_id === userId) ?? null;
+  me: async (): Promise<Canteen> => {
+    const { data } = await apiClient.get("/canteens/me");
+    return data;
   },
 
   create: async (payload: { name: string; description?: string; location?: string }) => {
