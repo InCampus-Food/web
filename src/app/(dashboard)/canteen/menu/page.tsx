@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMyCanteen } from "@/hooks/useMyCanteen";
 import { useCategories } from "@/hooks/useCategories";
 import { menuApi } from "@/lib/api/menu";
+import { uploadApi } from "@/lib/api/upload";
 import { MenuItem } from "@/types/menu";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -38,12 +39,14 @@ export default function MenuPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [initialForm, setInitialForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (!canteen) return;
     setIsLoading(true);
-    menuApi.list(canteen.id)
+    menuApi.list(canteen.id, undefined, true)
       .then(setItems)
       .catch(() => toast.error("Gagal memuat menu"))
       .finally(() => setIsLoading(false));
@@ -56,22 +59,43 @@ export default function MenuPage() {
   });
 
   const openCreate = () => {
+    const freshForm = { ...emptyForm, category_id: "none" };
     setSelectedItem(null);
-    setForm({ ...emptyForm, category_id: categories[0] ? String(categories[0].id) : "" });
+    setForm(freshForm);
+    setInitialForm(freshForm);
     setIsDialogOpen(true);
   };
 
   const openEdit = (item: MenuItem) => {
-    setSelectedItem(item);
-    setForm({
+    const editForm = {
       name: item.name,
       description: item.description ?? "",
       price: String(item.price),
       image_url: item.image_url ?? "",
-      category_id: item.category_id ? String(item.category_id) : "",
+      category_id: item.category_id ? String(item.category_id) : "none",
       is_available: item.is_available,
-    });
+    };
+    setSelectedItem(item);
+    setForm(editForm);
+    setInitialForm(editForm);
     setIsDialogOpen(true);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      const isChanged = JSON.stringify(form) !== JSON.stringify(initialForm);
+      if (isChanged || isUploading) {
+        const confirmResult = window.confirm(
+          isUploading
+            ? "Gambar sedang diunggah. Yakin ingin menutup dan membatalkan?"
+            : "Ada perubahan yang belum disimpan. Yakin ingin menutup?"
+        );
+        if (!confirmResult) return;
+      }
+      setIsDialogOpen(false);
+    } else {
+      setIsDialogOpen(true);
+    }
   };
 
   const openDelete = (item: MenuItem) => {
@@ -87,16 +111,17 @@ export default function MenuPage() {
     }
 
     setIsSaving(true);
-    const payload = {
-      name: form.name,
-      description: form.description || undefined,
-      price: Number(form.price),
-      image_url: form.image_url || undefined,
-      category_id: form.category_id ? Number(form.category_id) : undefined,
-      is_available: form.is_available,
-    };
 
     try {
+      const payload = {
+        name: form.name,
+        description: form.description || undefined,
+        price: Number(form.price),
+        image_url: form.image_url || undefined,
+        category_id: form.category_id && form.category_id !== "none" ? Number(form.category_id) : undefined,
+        is_available: form.is_available,
+      };
+
       if (selectedItem) {
         const updated = await menuApi.update(canteen.id, selectedItem.id, payload);
         setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -251,7 +276,7 @@ export default function MenuPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{selectedItem ? "Edit Menu" : "Tambah Menu"}</DialogTitle>
@@ -273,24 +298,62 @@ export default function MenuPage() {
               <div className="space-y-2">
                 <Label>Kategori</Label>
                 <Select
-                  value={form.category_id}
+                  value={form.category_id || "none"}
                   onValueChange={(val) => setForm({ ...form, category_id: val })}
                   disabled={categoriesLoading}
                 >
-                  <SelectTrigger><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder={categoriesLoading ? "Memuat..." : "Pilih Kategori"} />
+                  </SelectTrigger>
                   <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.icon} {c.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="none">Tanpa Kategori</SelectItem>
+                    {categories.length > 0 ? (
+                      categories.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.icon} {c.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="empty" disabled>Belum ada kategori</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>URL Gambar</Label>
-              <Input placeholder="https://..." value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} />
+              <Label>Gambar Menu</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={isUploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    try {
+                      setIsUploading(true);
+                      const loadingToast = toast.loading("Mengunggah gambar...");
+                      const res = await uploadApi.uploadImage(file, "menu");
+                      setForm({ ...form, image_url: res.url });
+                      toast.dismiss(loadingToast);
+                      toast.success("Gambar berhasil diunggah");
+                    } catch {
+                      toast.dismiss();
+                      toast.error("Gagal mengunggah gambar");
+                    } finally {
+                      setIsUploading(false);
+                    }
+                  }
+                }}
+              />
+              {isUploading && <p className="text-sm text-muted-foreground animate-pulse mt-2">Sedang mengunggah...</p>}
+              {form.image_url && !isUploading && (
+                <div className="text-sm text-muted-foreground mt-2">
+                  Gambar saat ini:{" "}
+                  <a href={form.image_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                    Lihat Gambar
+                  </a>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.is_available} onCheckedChange={(val) => setForm({ ...form, is_available: val })} />
@@ -298,8 +361,8 @@ export default function MenuPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Batal</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button variant="outline" onClick={() => handleDialogClose(false)}>Batal</Button>
+            <Button onClick={handleSave} disabled={isSaving || isUploading}>
               {isSaving ? "Menyimpan..." : selectedItem ? "Update" : "Tambah"}
             </Button>
           </DialogFooter>
