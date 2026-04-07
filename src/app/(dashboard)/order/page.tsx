@@ -26,6 +26,11 @@ export default function OrderPage() {
   const [isLoadingCanteens, setIsLoadingCanteens] = useState(true);
   const [isLoadingMenu, setIsLoadingMenu] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const { categories } = useCategories();
   const { canteenId, canteenName, items, addItem, removeItem, updateQty, clearCart, totalItems, totalPrice } = useCartStore();
@@ -60,9 +65,9 @@ export default function OrderPage() {
     return cat ? `${cat.icon ?? ""} ${cat.name}`.trim() : "Lainnya";
   };
 
-  const filteredMenu = menuItems.filter((item) =>
-    item.name.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredMenu = menuItems
+    .filter((item) => item.is_available)
+    .filter((item) => item.name.toLowerCase().includes(search.toLowerCase()));
 
   const groupedMenu = filteredMenu.reduce<Record<string, MenuItem[]>>((acc, item) => {
     const key = getCategoryLabel(item.category_id);
@@ -92,7 +97,7 @@ export default function OrderPage() {
             {selectedCanteen ? `Menu dari ${selectedCanteen.name}` : "Pilih kantin"}
           </p>
         </div>
-        {totalItems() > 0 && (
+        {isMounted && totalItems() > 0 && (
           <Button onClick={() => setIsCartOpen(true)} className="relative">
             <ShoppingCart className="h-4 w-4 mr-2" />
             Keranjang

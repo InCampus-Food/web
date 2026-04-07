@@ -1,10 +1,10 @@
 import apiClient from "./client";
-import { AuthResponse } from "@/types/user";
+import { LoginResponse } from "@/types/user";
 import { SignupPayload } from "@/types/auth";
 
 export const authApi = {
-  login: async (email: string, password: string): Promise<AuthResponse> => {
-    const { data } = await apiClient.post<AuthResponse>("/auth/login", {
+  login: async (email: string, password: string): Promise<LoginResponse> => {
+    const { data } = await apiClient.post<LoginResponse>("/auth/login", {
       email,
       password,
     });
@@ -16,24 +16,16 @@ export const authApi = {
     return data;
   },
 
-  logout: async (refreshToken: string) => {
-    await apiClient.post(
-      "/auth/logout",
-      {},
-      { headers: { "X-Refresh-Token": refreshToken } }
-    );
+  logout: async () => {
+    await apiClient.post("/auth/logout");
   },
 
   logoutAll: async () => {
     await apiClient.post("/auth/logout-all");
   },
 
-  refresh: async (refreshToken: string) => {
-    const { data } = await apiClient.post(
-      "/auth/refresh",
-      {},
-      { headers: { "X-Refresh-Token": refreshToken } }
-    );
+  refresh: async () => {
+    const { data } = await apiClient.post("/auth/refresh");
     return data;
   },
 

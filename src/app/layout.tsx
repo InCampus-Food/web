@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
-import { Outfit, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import TopNavbar from "@/components/common/TopNavbar";
+import Script from "next/script";
 import "./globals.css";
+import TopNavbar from "@/components/common/TopNavbar";
+import AuthProvider from "@/components/common/AuthProvider";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const geistSans = Geist({
+  variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
@@ -22,12 +24,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id">
-      <body className={`${outfit.variable} ${geistMono.variable} antialiased min-h-screen bg-muted/20 flex flex-col text-foreground font-sans`}>
-        <TopNavbar />
-        <div className="w-full flex-1 flex flex-col relative">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} suppressHydrationWarning={true}>
+        <AuthProvider>
+          <TopNavbar />
           {children}
-        </div>
-        <Toaster richColors position="top-right" />
+          <Toaster richColors position="top-right" />
+        </AuthProvider>
+        <Script
+          src="https://app.sandbox.midtrans.com/snap/snap.js"
+          data-client-key={process.env.NEXT_PUBLIC_MIDTRANS_CLIENT_KEY}
+          strategy="afterInteractive"
+        />
       </body>
     </html>
   );

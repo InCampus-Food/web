@@ -10,9 +10,7 @@ export interface User {
   created_at: string;
 }
 
-export interface AuthResponse {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
+export interface LoginResponse {
+  message: string;
   user: User;
 }

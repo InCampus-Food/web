@@ -24,13 +24,13 @@ type LoginForm = z.infer<typeof loginSchema>;
 
 const roleRedirect: Record<string, string> = {
   admin: "/admin",
-  canteen_staff: "/canteen",
-  delivery_staff: "/delivery",
+  canteen: "/canteen",
   customer: "/order",
 };
 
 export default function LoginPage() {
   const router = useRouter();
+
   const { setAuth } = useAuthStore();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -42,22 +42,18 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const response = await authApi.login(data.email, data.password);
-      setAuth(response.user, response.access_token, response.refresh_token);
+      setAuth(response.user);
       toast.success(`Selamat datang, ${response.user.name}!`);
       const redirect = roleRedirect[response.user.role] ?? "/";
       router.push(redirect);
     } catch (error: unknown) {
-      const message =
-        error instanceof Error
-          ? (error as any)?.response?.data?.detail
-          : null;
+      const message = (error as any)?.response?.data?.detail ?? null;
       const errorMsg =
         typeof message === "string"
           ? message
           : Array.isArray(message)
           ? "Input tidak valid, periksa kembali."
           : "Login gagal, coba lagi.";
-      console.log(message);
       toast.error(errorMsg);
     } finally {
       setIsLoading(false);

@@ -1,64 +1,59 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 
-const protectedRoutes: Record<string, string[]> = {
-  "/admin": ["admin"],
-  "/canteen": ["canteen"],
-  "/order": ["customer"],
-  "/profile": ["admin", "canteen", "customer"],
-  "/checkout": ["customer"],
-  "/track": ["customer"],
-};
+const SECRET = new TextEncoder().encode(process.env.SECRET_KEY);
 
-const roleHomeRedirect: Record<string, string> = {
-  admin: "/admin",
-  canteen: "/canteen",
-  customer: "/order",
-};
+const ROLE_CONFIG = {
+  admin: { home: "/admin", allowed: ["/admin", "/profile"] },
+  canteen: { home: "/canteen", allowed: ["/canteen", "/profile"] },
+  customer: { home: "/order", allowed: ["/order", "/profile", "/checkout", "/track"] },
+} as const;
 
-function getPayloadFromJWT(token: string) {
-  try {
-    const base64 = token.split(".")[1];
-    const decoded = atob(base64.replace(/-/g, "+").replace(/_/g, "/"));
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-}
+const PUBLIC_ROUTES = ["/"];
+const AUTH_ROUTES = ["/login", "/signup"];
 
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("access_token")?.value;
 
-  const isAuthPage = pathname.startsWith("/login") || pathname.startsWith("/signup");
-  const isPublicPage = pathname === "/" || pathname === "/about" || pathname === "/contact";
-
-  if (!token && !isAuthPage && !isPublicPage) {
-    return NextResponse.redirect(new URL("/login", request.url));
+  if (PUBLIC_ROUTES.includes(pathname)) {
+    console.log("Public route");
+    return NextResponse.next()
   }
 
-  if (token && isAuthPage) {
-    const payload = getPayloadFromJWT(token);
-    const role = payload?.role ?? "customer";
-    const redirectTo = roleHomeRedirect[role] ?? "/login";
-    return NextResponse.redirect(new URL(redirectTo, request.url));
-  }
-
-  if (token) {
-    const payload = getPayloadFromJWT(token);
-    const role = payload?.role ?? "";
-
-    for (const [route, allowedRoles] of Object.entries(protectedRoutes)) {
-      if (pathname.startsWith(route) && !allowedRoles.includes(role)) {
-        const redirectTo = roleHomeRedirect[role] ?? "/login";
-        return NextResponse.redirect(new URL(redirectTo, request.url));
-      }
+  if (!token) {
+    if (AUTH_ROUTES.includes(pathname)) {
+      console.log("Auth route");
+      return NextResponse.next()
     }
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 
-  return NextResponse.next();
+  try {
+    const { payload } = await jwtVerify(token, SECRET)
+    const role = (payload.role as keyof typeof ROLE_CONFIG) || "customer";
+    const config = ROLE_CONFIG[role];
+
+    if (AUTH_ROUTES.includes(pathname)) {
+      return NextResponse.redirect(new URL(config.home, request.url));
+    }
+
+    const isAllowed = config.allowed.some(route => pathname.startsWith(route));
+
+    if (!isAllowed) {
+      if (pathname === config.home) return NextResponse.next();
+      return NextResponse.redirect(new URL(config.home, request.url));
+    }
+
+    return NextResponse.next();
+  } catch (err) {
+    const response = NextResponse.redirect(new URL("/login", request.url));
+    response.cookies.delete("access_token");
+    return response;
+  }
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico|.well-known).*)"],
 };

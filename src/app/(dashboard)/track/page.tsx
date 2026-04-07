@@ -1,34 +1,60 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { orderApi } from "@/lib/api/order";
+import { paymentApi } from "@/lib/api/payment";
 import { Order, OrderStatus } from "@/types/order";
+import { Payment } from "@/types/payment";
+import { useOrderWebSocket } from "@/hooks/useOrderWebSocket";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckCircle, Circle, Clock, ChefHat, Truck, MapPin, XCircle, RefreshCw } from "lucide-react";
+import {
+  CheckCircle, Circle, Clock, ChefHat, Truck,
+  MapPin, XCircle, RefreshCw, CreditCard, Banknote, AlertCircle,
+} from "lucide-react";
 
 const steps = [
-  { key: "pending", label: "Pesanan Diterima", icon: Clock, desc: "Menunggu konfirmasi kantin" },
-  { key: "confirmed", label: "Dikonfirmasi ", icon: CheckCircle, desc: "Kantin telah mengkonfirmasi pesanan anda" },
-  { key: "preparing", label: "Sedang Dimasak", icon: ChefHat, desc: "Makananmu sedang disiapkan" },
-  { key: "delivering", label: "Sedang Diantar", icon: Truck, desc: "Pesananmu dalam perjalanan" },
-  { key: "delivered", label: "Tiba!", icon: MapPin, desc: "Pesananmu sudah tiba!" },
+  { key: "pending",    label: "Pesanan Diterima",      icon: Clock,        desc: "Menunggu konfirmasi kantin" },
+  { key: "confirmed",  label: "Dikonfirmasi",           icon: ChefHat,      desc: "Pesanan dikonfirmasi, segera dimasak" },
+  { key: "preparing",  label: "Sedang Dimasak",         icon: ChefHat,      desc: "Kantin sedang menyiapkan pesananmu" },
+  { key: "delivering", label: "Sedang Diantar",         icon: Truck,        desc: "Pesananmu dalam perjalanan" },
+  { key: "delivered",  label: "Tiba!",                  icon: MapPin,       desc: "Pesananmu sudah tiba!" },
 ];
 
 const statusOrder: OrderStatus[] = ["pending", "confirmed", "preparing", "delivering", "delivered"];
 
-const statusBadge: Record<OrderStatus, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  pending: { label: "Menunggu", variant: "outline" },
-  confirmed: { label: "Dikonfirmasi", variant: "secondary" },
-  preparing: { label: "Dimasak", variant: "secondary" },
-  delivering: { label: "Diantar", variant: "default" },
-  delivered: { label: "Terkirim", variant: "default" },
-  cancelled: { label: "Dibatalkan", variant: "destructive" },
+const statusBadge: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  waiting_for_payment: { label: "Menunggu Bayar", variant: "destructive" },
+  pending:             { label: "Menunggu",        variant: "outline" },
+  confirmed:           { label: "Dikonfirmasi",    variant: "secondary" },
+  preparing:           { label: "Dimasak",         variant: "secondary" },
+  delivering:          { label: "Diantar",         variant: "default" },
+  delivered:           { label: "Terkirim",        variant: "default" },
+  cancelled:           { label: "Dibatalkan",      variant: "destructive" },
 };
+
+function useCountdown(expiredAt?: string) {
+  const [timeLeft, setTimeLeft] = useState<number>(0);
+
+  useEffect(() => {
+    if (!expiredAt) return;
+    const update = () => {
+      const diff = Math.max(0, new Date(expiredAt).getTime() - Date.now());
+      setTimeLeft(diff);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [expiredAt]);
+
+  const minutes = Math.floor(timeLeft / 60000);
+  const seconds = Math.floor((timeLeft % 60000) / 1000);
+  return { timeLeft, formatted: `${minutes}:${seconds.toString().padStart(2, "0")}` };
+}
 
 export default function TrackPage() {
   const searchParams = useSearchParams();
@@ -36,10 +62,13 @@ export default function TrackPage() {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [payment, setPayment] = useState<Payment | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isCancelling, setIsCancelling] = useState(false);
 
-  const fetchOrders = async () => {
+  const { timeLeft, formatted: countdownFormatted } = useCountdown(payment?.expired_at);
+
+  const fetchOrders = useCallback(async () => {
     try {
       const data = await orderApi.myOrders();
       setOrders(data);
@@ -47,16 +76,47 @@ export default function TrackPage() {
         const found = data.find((o) => o.id === Number(orderId));
         setSelectedOrder(found ?? data[0] ?? null);
       } else {
-        setSelectedOrder(data[0] ?? null);
+        setSelectedOrder((prev) => prev ? data.find((o) => o.id === prev.id) ?? data[0] : data[0]);
       }
     } catch {
       toast.error("Gagal memuat pesanan");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orderId]);
 
-  useEffect(() => { fetchOrders(); }, []);
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  useEffect(() => {
+    if (selectedOrder?.status === "waiting_for_payment") {
+      paymentApi.getByOrder(selectedOrder.id)
+        .then(setPayment)
+        .catch(() => setPayment(null));
+    } else {
+      setPayment(null);
+    }
+  }, [selectedOrder?.id, selectedOrder?.status]);
+
+  useOrderWebSocket(useCallback((msg) => {
+    if (msg.type === "payment_update" || msg.type === "payment_expired") {
+      fetchOrders();
+      if (msg.payment_status === "paid") {
+        toast.success("Pembayaran berhasil! Pesanan sedang diproses.");
+      } else if (msg.type === "payment_expired") {
+        toast.error("Waktu pembayaran habis. Pesanan dibatalkan.");
+      }
+    }
+  }, [fetchOrders]));
+
+  const handlePayNow = () => {
+    if (!payment?.snap_token) return;
+    window.snap.pay(payment.snap_token, {
+      onSuccess: () => { toast.success("Pembayaran berhasil!"); fetchOrders(); },
+      onPending: () => toast.info("Pembayaran pending."),
+      onError: () => toast.error("Pembayaran gagal."),
+      onClose: () => toast.warning("Pembayaran ditutup."),
+    });
+  };
 
   const handleCancel = async () => {
     if (!selectedOrder) return;
@@ -67,10 +127,7 @@ export default function TrackPage() {
       setSelectedOrder(updated);
       toast.success("Pesanan dibatalkan");
     } catch (error: any) {
-      const msg = typeof error?.response?.data?.detail === "string"
-        ? error.response.data.detail
-        : "Gagal membatalkan pesanan";
-      toast.error(msg);
+      toast.error(typeof error?.response?.data?.detail === "string" ? error.response.data.detail : "Gagal membatalkan");
     } finally {
       setIsCancelling(false);
     }
@@ -127,8 +184,8 @@ export default function TrackPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">Rp {order.total_price.toLocaleString("id-ID")}</span>
-                  <Badge variant={statusBadge[order.status as OrderStatus]?.variant ?? "outline"}>
-                    {statusBadge[order.status as OrderStatus]?.label ?? order.status}
+                  <Badge variant={statusBadge[order.status]?.variant ?? "outline"}>
+                    {statusBadge[order.status]?.label ?? order.status}
                   </Badge>
                 </div>
               </div>
@@ -138,14 +195,47 @@ export default function TrackPage() {
           {/* Order Detail */}
           {selectedOrder && (
             <>
+              {/* Waiting for payment banner */}
+              {selectedOrder.status === "waiting_for_payment" && payment && (
+                <Card className="border-destructive bg-destructive/5">
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="h-5 w-5 text-destructive" />
+                        <p className="font-semibold text-sm">Menunggu Pembayaran</p>
+                      </div>
+                      <div className={`font-mono font-bold text-lg ${timeLeft < 60000 ? "text-destructive" : "text-foreground"}`}>
+                        {countdownFormatted}
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Selesaikan pembayaran sebelum waktu habis atau pesanan akan otomatis dibatalkan.
+                    </p>
+                    <Button className="w-full" onClick={handlePayNow}>
+                      <CreditCard className="h-4 w-4 mr-2" /> Bayar Sekarang
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle className="font-mono text-base">#{selectedOrder.id}</CardTitle>
-                  <Badge variant={statusBadge[selectedOrder.status as OrderStatus]?.variant ?? "outline"}>
-                    {statusBadge[selectedOrder.status as OrderStatus]?.label ?? selectedOrder.status}
+                  <Badge variant={statusBadge[selectedOrder.status]?.variant ?? "outline"}>
+                    {statusBadge[selectedOrder.status]?.label ?? selectedOrder.status}
                   </Badge>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {/* Payment method info */}
+                  {payment && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      {payment.method === "cod"
+                        ? <><Banknote className="h-3.5 w-3.5" /> Bayar di Tempat (COD)</>
+                        : <><CreditCard className="h-3.5 w-3.5" /> Transfer / E-Wallet</>
+                      }
+                    </div>
+                  )}
+
                   <div className="space-y-1">
                     {selectedOrder.items.map((item) => (
                       <div key={item.id} className="flex justify-between text-sm">
@@ -159,14 +249,8 @@ export default function TrackPage() {
                     </div>
                   </div>
 
-                  {(selectedOrder.status === "pending" || selectedOrder.status === "confirmed") && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="w-full"
-                      onClick={handleCancel}
-                      disabled={isCancelling}
-                    >
+                  {(selectedOrder.status === "waiting_for_payment" || selectedOrder.status === "pending" || selectedOrder.status === "confirmed") && (
+                    <Button variant="destructive" size="sm" className="w-full" onClick={handleCancel} disabled={isCancelling}>
                       {isCancelling ? "Membatalkan..." : "Batalkan Pesanan"}
                     </Button>
                   )}
@@ -174,7 +258,7 @@ export default function TrackPage() {
               </Card>
 
               {/* Tracking Steps */}
-              {selectedOrder.status !== "cancelled" ? (
+              {selectedOrder.status !== "cancelled" && selectedOrder.status !== "waiting_for_payment" ? (
                 <Card>
                   <CardHeader><CardTitle className="text-base">Status Pesanan</CardTitle></CardHeader>
                   <CardContent>
@@ -203,14 +287,14 @@ export default function TrackPage() {
                     </div>
                   </CardContent>
                 </Card>
-              ) : (
+              ) : selectedOrder.status === "cancelled" ? (
                 <Card className="border-destructive">
                   <CardContent className="flex items-center gap-3 p-4 text-destructive">
                     <XCircle className="h-5 w-5" />
                     <p className="text-sm font-medium">Pesanan ini telah dibatalkan</p>
                   </CardContent>
                 </Card>
-              )}
+              ) : null}
             </>
           )}
         </>

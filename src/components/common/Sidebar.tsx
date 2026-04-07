@@ -40,7 +40,7 @@ const roleBadgeLabel: Record<string, string> = {
 };
 
 export default function Sidebar() {
-  const { user, refreshToken, clearAuth } = useAuthStore();
+  const { user, clearAuth } = useAuthStore();
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -50,7 +50,7 @@ export default function Sidebar() {
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      if (refreshToken) await authApi.logout(refreshToken);
+      await authApi.logout();
     } catch {}
     finally {
       clearAuth();
