@@ -35,22 +35,24 @@ const navByRole = {
     { label: "Pesanan", href: "/canteen/orders" },
   ],
   customer: [
-    
+    { label: "Pesan Makanan", href: "/order" },
+    { label: "Pesanan Saya", href: "/orders" },
   ],
+  notLoggedIn: []
 };
 
 export default function TopNavbar() {
-  const { user, refreshToken, clearAuth } = useAuthStore();
+  const { user, clearAuth } = useAuthStore();
   const pathname = usePathname();
   const router = useRouter();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
-  const navItems = navByRole[user?.role ?? "customer"] ?? [];
+  const navItems = navByRole[user?.role ?? "notLoggedIn"] ?? [];
 
   const handleLogout = async () => {
     setIsLoggingOut(true);
     try {
-      if (refreshToken) await authApi.logout(refreshToken);
+      await authApi.logout();
     } catch {
       // Ignore API err
     } finally {
@@ -105,7 +107,7 @@ export default function TopNavbar() {
             </span>
           </button>
           
-          <div className="h-8 w-px bg-border/50 mx-2 hidden md:block"></div>
+          <div className="h-8 w-px bg-border mx-2 hidden md:block"></div>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

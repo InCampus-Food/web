@@ -20,7 +20,7 @@ const ROLE_LABEL: Record<string, string> = {
 };
 
 export default function ProfilePage() {
-  const { user, setAuth, token, refreshToken } = useAuthStore();
+  const { user, setAuth } = useAuthStore();
 
   const [profileForm, setProfileForm] = useState({ name: "", phone: "" });
   const [passwordForm, setPasswordForm] = useState({ current_password: "", new_password: "", confirm_password: "" });
@@ -48,8 +48,8 @@ export default function ProfilePage() {
         phone: profileForm.phone || undefined,
       });
       // Update auth store juga
-      if (user && token && refreshToken) {
-        setAuth({ ...user, name: updated.name }, token, refreshToken);
+      if (user) {
+        setAuth({ ...user, name: updated.name });
       }
       toast.success("Profil berhasil diupdate!");
     } catch {

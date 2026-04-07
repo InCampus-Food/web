@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useMyCanteen } from "@/hooks/useMyCanteen";
 import { orderApi } from "@/lib/api/order";
 import { Order, OrderStatus } from "@/types/order";
@@ -34,10 +35,6 @@ const canteenOrderApi = {
   },
 };
 
-// Kantin action: 3 step saja
-// pending    → "Konfirmasi & Masak" → preparing (skip confirmed)
-// preparing  → "Siap Antar"         → delivering
-// delivering → "Konfirmasi Tiba"    → delivered
 type CanteenAction = {
   label: string;
   variant: "default" | "outline";
@@ -52,6 +49,7 @@ const CANTEEN_ACTIONS: Record<string, CanteenAction> = {
 };
 
 const STATUS_BADGE: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  waiting_for_payment: { label: "Belum Bayar",  variant: "destructive" },
   pending:    { label: "Menunggu",   variant: "destructive" },
   confirmed:  { label: "Dikonfirmasi", variant: "secondary" },
   preparing:  { label: "Dimasak",    variant: "secondary" },
@@ -68,6 +66,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function CanteenDashboard() {
+  const router = useRouter();
   const { canteen, isLoading: canteenLoading } = useMyCanteen();
   const [orders, setOrders] = useState<Order[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -137,7 +136,7 @@ export default function CanteenDashboard() {
 
   const activeOrders = orders.filter((o) =>
     statusFilter === "all"
-      ? ["pending", "preparing", "delivering"].includes(o.status)
+      ? ["pending", "confirmed", "preparing", "delivering"].includes(o.status)
       : o.status === statusFilter
   );
 
@@ -155,10 +154,20 @@ export default function CanteenDashboard() {
 
   if (!canteen) {
     return (
-      <div className="flex flex-col items-center justify-center h-96 gap-4">
-        <UtensilsCrossed className="h-16 w-16 text-muted-foreground" />
-        <h2 className="text-xl font-semibold">Kamu belum punya kantin</h2>
-        <p className="text-muted-foreground">Hubungi admin untuk mendaftarkan kantinmu.</p>
+      <div className="flex flex-col items-center justify-center h-96 gap-4 text-center">
+        <div className="p-4 rounded-2xl bg-muted border">
+          <UtensilsCrossed className="h-12 w-12 text-muted-foreground" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-xl font-semibold">Kamu belum punya kantin</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">
+            Daftarkan kantinmu sekarang untuk mulai menerima pesanan dari pelanggan.
+          </p>
+        </div>
+        <Button onClick={() => router.push("/canteen/create")} size="lg" className="gap-2">
+          <UtensilsCrossed className="h-4 w-4" />
+          Buat Kantin Sekarang
+        </Button>
       </div>
     );
   }
@@ -178,7 +187,7 @@ export default function CanteenDashboard() {
             disabled={isToggling}
             className={`text-white px-4 ${isOpen ? "bg-green-500" : "bg-red-500"}`}
             >
-            {isOpen ? "Open" :  "Buka"}
+            {isOpen ? "Tutup" : "Buka"}
           </Button>
         </div>
       </div>

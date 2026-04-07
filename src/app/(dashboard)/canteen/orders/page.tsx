@@ -48,7 +48,7 @@ const CANTEEN_ACTIONS: Record<string, CanteenAction> = {
 };
 
 const STATUS_BADGE: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  pending:    { label: "Menunggu",     variant: "destructive" },
+  pending:    { label: "Menunggu Pembayaran",     variant: "destructive" },
   confirmed:  { label: "Dikonfirmasi", variant: "secondary" },
   preparing:  { label: "Dimasak",      variant: "secondary" },
   delivering: { label: "Diantar",      variant: "default" },
@@ -58,7 +58,7 @@ const STATUS_BADGE: Record<string, { label: string; variant: "default" | "second
 
 const STATUS_TABS = [
   { value: "all",        label: "Semua" },
-  { value: "pending",    label: "Menunggu" },
+  { value: "pending",    label: "Menunggu Pembayaran" },
   { value: "preparing",  label: "Dimasak" },
   { value: "delivering", label: "Diantar" },
   { value: "delivered",  label: "Selesai" },
@@ -213,7 +213,7 @@ export default function CanteenOrdersPage() {
                     <div className="flex-1 min-w-0 space-y-2">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-bold text-sm">#{order.id}</span>
-                        <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge>
+                        {/* <Badge variant={badge.variant} className="text-xs">{badge.label}</Badge> */}
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Clock className="h-3 w-3" /> {timeAgo(order.ordered_at)}
                         </span>
