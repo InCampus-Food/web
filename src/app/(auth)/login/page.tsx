@@ -25,7 +25,7 @@ type LoginForm = z.infer<typeof loginSchema>;
 const roleRedirect: Record<string, string> = {
   admin: "/admin",
   canteen: "/canteen",
-  customer: "/order",
+  customer: "/",
 };
 
 export default function LoginPage() {

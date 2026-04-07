@@ -6,25 +6,28 @@ const SECRET = new TextEncoder().encode(process.env.SECRET_KEY);
 
 const ROLE_CONFIG = {
   admin: { home: "/admin", allowed: ["/admin", "/profile"] },
-  canteen: { home: "/canteen", allowed: ["/canteen", "/profile"] },
-  customer: { home: "/order", allowed: ["/order", "/profile", "/checkout", "/track"] },
+  canteen: { home: "/canteen", allowed: ["/canteen", "/profile", "/delivery"] },
+  customer: { home: "/", allowed: ["/", "/customer/profile", "/customer/checkout", "/customer/track", "/customer/orders"] },
 } as const;
 
 const PUBLIC_ROUTES = ["/"];
 const AUTH_ROUTES = ["/login", "/signup"];
+const UNDEFINED_ROUTES = ["/customer"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("access_token")?.value;
 
   if (PUBLIC_ROUTES.includes(pathname)) {
-    console.log("Public route");
     return NextResponse.next()
+  }
+
+  if (UNDEFINED_ROUTES.includes(pathname)) {
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   if (!token) {
     if (AUTH_ROUTES.includes(pathname)) {
-      console.log("Auth route");
       return NextResponse.next()
     }
     return NextResponse.redirect(new URL("/login", request.url))
