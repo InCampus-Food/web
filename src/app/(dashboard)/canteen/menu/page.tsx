@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMyCanteen } from "@/hooks/useMyCanteen";
 import { useCategories } from "@/hooks/useCategories";
 import { menuApi } from "@/lib/api/menu";
+import { uploadApi } from "@/lib/api/upload";
 import { MenuItem } from "@/types/menu";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -38,12 +39,14 @@ export default function MenuPage() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
   const [form, setForm] = useState(emptyForm);
+  const [initialForm, setInitialForm] = useState(emptyForm);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
     if (!canteen) return;
     setIsLoading(true);
-    menuApi.list(canteen.id)
+    menuApi.list(canteen.id, undefined, true)
       .then(setItems)
       .catch(() => toast.error("Gagal memuat menu"))
       .finally(() => setIsLoading(false));
@@ -56,22 +59,43 @@ export default function MenuPage() {
   });
 
   const openCreate = () => {
+    const freshForm = { ...emptyForm, category_id: "none" };
     setSelectedItem(null);
-    setForm({ ...emptyForm, category_id: categories[0] ? String(categories[0].id) : "" });
+    setForm(freshForm);
+    setInitialForm(freshForm);
     setIsDialogOpen(true);
   };
 
   const openEdit = (item: MenuItem) => {
-    setSelectedItem(item);
-    setForm({
+    const editForm = {
       name: item.name,
       description: item.description ?? "",
       price: String(item.price),
       image_url: item.image_url ?? "",
-      category_id: item.category_id ? String(item.category_id) : "",
+      category_id: item.category_id ? String(item.category_id) : "none",
       is_available: item.is_available,
-    });
+    };
+    setSelectedItem(item);
+    setForm(editForm);
+    setInitialForm(editForm);
     setIsDialogOpen(true);
+  };
+
+  const handleDialogClose = (open: boolean) => {
+    if (!open) {
+      const isChanged = JSON.stringify(form) !== JSON.stringify(initialForm);
+      if (isChanged || isUploading) {
+        const confirmResult = window.confirm(
+          isUploading
+            ? "Gambar sedang diunggah. Yakin ingin menutup dan membatalkan?"
+            : "Ada perubahan yang belum disimpan. Yakin ingin menutup?"
+        );
+        if (!confirmResult) return;
+      }
+      setIsDialogOpen(false);
+    } else {
+      setIsDialogOpen(true);
+    }
   };
 
   const openDelete = (item: MenuItem) => {
@@ -87,16 +111,17 @@ export default function MenuPage() {
     }
 
     setIsSaving(true);
-    const payload = {
-      name: form.name,
-      description: form.description || undefined,
-      price: Number(form.price),
-      image_url: form.image_url || undefined,
-      category_id: form.category_id ? Number(form.category_id) : undefined,
-      is_available: form.is_available,
-    };
 
     try {
+      const payload = {
+        name: form.name,
+        description: form.description || undefined,
+        price: Number(form.price),
+        image_url: form.image_url || undefined,
+        category_id: form.category_id && form.category_id !== "none" ? Number(form.category_id) : undefined,
+        is_available: form.is_available,
+      };
+
       if (selectedItem) {
         const updated = await menuApi.update(canteen.id, selectedItem.id, payload);
         setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -146,7 +171,7 @@ export default function MenuPage() {
     return (
       <div className="space-y-4">
         <Skeleton className="h-8 w-48" />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40" />)}
         </div>
       </div>
@@ -198,7 +223,7 @@ export default function MenuPage() {
 
       {/* Menu Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {[...Array(6)].map((_, i) => <Skeleton key={i} className="h-40" />)}
         </div>
       ) : filtered.length === 0 ? (
@@ -207,43 +232,67 @@ export default function MenuPage() {
           <p>Belum ada menu</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((item) => {
             const cat = getCategoryName(item.category_id);
             return (
-              <Card key={item.id} className={!item.is_available ? "opacity-60" : ""}>
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <p className="font-semibold">{item.name}</p>
-                      {item.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{item.description}</p>}
-                    </div>
-                    {cat && (
-                      <Badge variant="outline" className="text-xs shrink-0">
-                        {cat.icon} {cat.name}
-                      </Badge>
+              <Card key={item.id} className={`overflow-hidden transition-all hover:shadow-md ${!item.is_available ? "opacity-60" : ""}`}>
+                <div className="flex h-full">
+                  {/* Left Side: Image */}
+                  <div className="w-32 sm:w-36 shrink-0 bg-muted/50 relative border-r">
+                    {item.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-muted-foreground/30">
+                        <UtensilsCrossed className="h-10 w-10" />
+                      </div>
                     )}
                   </div>
 
-                  <p className="text-lg font-bold">Rp {item.price.toLocaleString("id-ID")}</p>
+                  {/* Right Side: Content */}
+                  <CardContent className="flex flex-1 flex-col justify-between p-4">
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold line-clamp-1" title={item.name}>{item.name}</p>
+                        {cat && (
+                          <Badge variant="secondary" className="text-[10px] uppercase font-medium tracking-wider shrink-0 px-2 py-0.5 rounded-full">
+                            {cat.icon} {cat.name}
+                          </Badge>
+                        )}
+                      </div>
+                      {item.description && (
+                        <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">
+                          {item.description}
+                        </p>
+                      )}
+                    </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Switch checked={item.is_available} onCheckedChange={() => handleToggleAvailable(item)} />
-                      <span className="text-xs text-muted-foreground">
-                        {item.is_available ? "Tersedia" : "Habis"}
-                      </span>
+                    <div className="mt-4">
+                      <p className="text-[15px] font-bold text-primary">Rp {item.price.toLocaleString("id-ID")}</p>
+                      <div className="flex items-center justify-between border-t border-border pt-3 mt-3">
+                        <div className="flex items-center gap-2">
+                          <Switch checked={item.is_available} onCheckedChange={() => handleToggleAvailable(item)} className="scale-75 origin-left" />
+                          <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                            {item.is_available ? "Tersedia" : "Habis"}
+                          </span>
+                        </div>
+                        <div className="flex gap-0.5 -mr-2">
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => openEdit(item)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive/80 hover:text-destructive hover:bg-destructive/10" onClick={() => openDelete(item)}>
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    <div className="flex gap-1">
-                      <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => openEdit(item)}>
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => openDelete(item)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
+                  </CardContent>
+                </div>
               </Card>
             );
           })}
@@ -251,7 +300,7 @@ export default function MenuPage() {
       )}
 
       {/* Create/Edit Dialog */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{selectedItem ? "Edit Menu" : "Tambah Menu"}</DialogTitle>
@@ -273,24 +322,62 @@ export default function MenuPage() {
               <div className="space-y-2">
                 <Label>Kategori</Label>
                 <Select
-                  value={form.category_id}
+                  value={form.category_id || "none"}
                   onValueChange={(val) => setForm({ ...form, category_id: val })}
                   disabled={categoriesLoading}
                 >
-                  <SelectTrigger><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                  <SelectTrigger>
+                    <SelectValue placeholder={categoriesLoading ? "Memuat..." : "Pilih Kategori"} />
+                  </SelectTrigger>
                   <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.icon} {c.name}
-                      </SelectItem>
-                    ))}
+                    <SelectItem value="none">Tanpa Kategori</SelectItem>
+                    {categories.length > 0 ? (
+                      categories.map((c) => (
+                        <SelectItem key={c.id} value={String(c.id)}>
+                          {c.icon} {c.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="empty" disabled>Belum ada kategori</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-2">
-              <Label>URL Gambar</Label>
-              <Input placeholder="https://..." value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} />
+              <Label>Gambar Menu</Label>
+              <Input
+                type="file"
+                accept="image/*"
+                disabled={isUploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    try {
+                      setIsUploading(true);
+                      const loadingToast = toast.loading("Mengunggah gambar...");
+                      const res = await uploadApi.uploadImage(file, "menu");
+                      setForm({ ...form, image_url: res.url });
+                      toast.dismiss(loadingToast);
+                      toast.success("Gambar berhasil diunggah");
+                    } catch {
+                      toast.dismiss();
+                      toast.error("Gagal mengunggah gambar");
+                    } finally {
+                      setIsUploading(false);
+                    }
+                  }
+                }}
+              />
+              {isUploading && <p className="text-sm text-muted-foreground animate-pulse mt-2">Sedang mengunggah...</p>}
+              {form.image_url && !isUploading && (
+                <div className="text-sm text-muted-foreground mt-2">
+                  Gambar saat ini:{" "}
+                  <a href={form.image_url} target="_blank" rel="noreferrer" className="text-primary hover:underline">
+                    Lihat Gambar
+                  </a>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.is_available} onCheckedChange={(val) => setForm({ ...form, is_available: val })} />
@@ -298,8 +385,8 @@ export default function MenuPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Batal</Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button variant="outline" onClick={() => handleDialogClose(false)}>Batal</Button>
+            <Button onClick={handleSave} disabled={isSaving || isUploading}>
               {isSaving ? "Menyimpan..." : selectedItem ? "Update" : "Tambah"}
             </Button>
           </DialogFooter>

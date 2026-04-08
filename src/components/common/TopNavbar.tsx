@@ -35,8 +35,8 @@ const navByRole = {
     { label: "Pesanan", href: "/canteen/orders" },
   ],
   customer: [
-    { label: "Pesan Makanan", href: "/order" },
-    { label: "Pesanan Saya", href: "/orders" },
+    { label: "Pesan Makanan", href: "/customer/order" },
+    { label: "Pesanan Saya", href: "/customer/orders" },
   ],
   notLoggedIn: []
 };

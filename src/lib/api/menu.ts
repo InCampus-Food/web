@@ -2,9 +2,9 @@ import apiClient from "./client";
 import { MenuItem, MenuItemCreate, MenuItemUpdate } from "@/types/menu";
 
 export const menuApi = {
-  list: async (canteenId: number, category?: string): Promise<MenuItem[]> => {
+  list: async (canteenId: number, category?: string, include_unavailable?: boolean): Promise<MenuItem[]> => {
     const { data } = await apiClient.get(`/canteens/${canteenId}/menu`, {
-      params: category ? { category } : {},
+      params: category ? { category, include_unavailable } : { include_unavailable },
     });
     return data;
   },

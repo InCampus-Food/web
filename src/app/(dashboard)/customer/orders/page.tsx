@@ -49,7 +49,6 @@ export default function CustomerOrdersPage() {
   const fetchOrders = useCallback(async () => {
     try {
       const data = await orderApi.myOrders();
-      // sort descending by ordered_at
       data.sort((a, b) => new Date(b.ordered_at).getTime() - new Date(a.ordered_at).getTime());
       setOrders(data);
     } catch {
@@ -81,10 +80,9 @@ export default function CustomerOrdersPage() {
       return ["delivered", "cancelled"].includes(o.status);
     }
 
-    return true; // all
+    return true;
   });
 
-  // Count active / history
   const activeCount = orders.filter(o => ["waiting_for_payment", "pending", "confirmed", "preparing", "delivering"].includes(o.status)).length;
   const historyCount = orders.filter(o => ["delivered", "cancelled"].includes(o.status)).length;
   const countMap: Record<string, number> = {

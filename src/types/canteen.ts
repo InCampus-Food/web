@@ -1,3 +1,5 @@
+import { MenuItem } from "./menu";
+
 export interface Canteen {
   id: number;
   user_id: number;
@@ -5,5 +7,7 @@ export interface Canteen {
   description?: string;
   location?: string;
   is_open: boolean;
+  image_url?: string | null;
   created_at: string;
+  menu_items?: MenuItem[];
 }
